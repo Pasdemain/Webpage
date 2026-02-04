@@ -31,6 +31,66 @@
             color: #00d4ff;
         }
 
+        /* Login Screen */
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            text-align: center;
+        }
+
+        .login-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 40px;
+        }
+
+        .login-box h2 {
+            margin-bottom: 20px;
+            color: #00d4ff;
+        }
+
+        .pin-input {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.5rem;
+            text-align: center;
+            border: 2px solid #30363d;
+            border-radius: 8px;
+            background: #161b22;
+            color: #fff;
+            letter-spacing: 10px;
+            margin-bottom: 20px;
+        }
+
+        .pin-input:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+
+        .pin-input::placeholder {
+            letter-spacing: normal;
+        }
+
+        .login-error {
+            color: #f85149;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .login-error.show {
+            display: block;
+        }
+
+        /* Dashboard */
+        .dashboard {
+            display: none;
+        }
+
+        .dashboard.visible {
+            display: block;
+        }
+
         .status-banner {
             text-align: center;
             padding: 10px;
@@ -102,6 +162,16 @@
         .btn-danger:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 5px 20px rgba(255, 71, 87, 0.4);
+        }
+
+        .btn-secondary {
+            background: #30363d;
+            color: #8b949e;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #484f58;
+            color: #fff;
         }
 
         .logs-container {
@@ -211,11 +281,42 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .header-bar h1 {
+            margin-bottom: 0;
+        }
+
+        .logout-btn {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Automation Dashboard</h1>
+    <!-- Login Screen -->
+    <div class="login-container" id="loginScreen">
+        <div class="login-box">
+            <h2>Connexion</h2>
+            <p style="color: #8b949e; margin-bottom: 20px;">Entrez le code PIN</p>
+            <div class="login-error" id="loginError">Code PIN incorrect</div>
+            <input type="password" class="pin-input" id="pinInput" placeholder="****" maxlength="10" autocomplete="off">
+            <button class="btn btn-primary" id="loginBtn" style="width: 100%;">Se connecter</button>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="container dashboard" id="dashboard">
+        <div class="header-bar">
+            <h1>Automation Dashboard</h1>
+            <button class="btn btn-secondary logout-btn" id="logoutBtn">Deconnexion</button>
+        </div>
 
         <div class="status-banner status-offline" id="pcStatus">
             PC: Hors ligne
@@ -244,7 +345,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, onValue, set, push, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, onValue, set, push, remove, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         // Configuration Firebase
         const firebaseConfig = {
@@ -258,8 +359,17 @@
         const logsRef = ref(db, 'logs');
         const commandRef = ref(db, 'command');
         const statusRef = ref(db, 'pc_status');
+        const pinRef = ref(db, 'config/pin');
 
-        // DOM Elements
+        // DOM Elements - Login
+        const loginScreen = document.getElementById('loginScreen');
+        const dashboard = document.getElementById('dashboard');
+        const pinInput = document.getElementById('pinInput');
+        const loginBtn = document.getElementById('loginBtn');
+        const loginError = document.getElementById('loginError');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        // DOM Elements - Dashboard
         const logsContent = document.getElementById('logsContent');
         const logCount = document.getElementById('logCount');
         const runBtn = document.getElementById('runBtn');
@@ -272,18 +382,109 @@
         let pcOnline = false;
         let wasOnline = false;
         let lastStatusTimestamp = 0;
+        let isAuthenticated = false;
 
-        // Ecouter le statut du PC
-        onValue(statusRef, (snapshot) => {
-            const status = snapshot.val();
-            if (status && status.online) {
-                lastStatusTimestamp = status.timestamp;
-                checkPCOnline();
-            } else {
-                pcOnline = false;
-                updatePCStatus();
-            }
+        // ==================== AUTHENTIFICATION ====================
+
+        // Verifier si deja connecte (session)
+        if (sessionStorage.getItem('authenticated') === 'true') {
+            showDashboard();
+        }
+
+        // Login
+        loginBtn.addEventListener('click', checkPin);
+        pinInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') checkPin();
         });
+
+        async function checkPin() {
+            const enteredPin = pinInput.value;
+            if (!enteredPin) return;
+
+            try {
+                const snapshot = await get(pinRef);
+                const correctPin = snapshot.val();
+
+                if (correctPin && enteredPin === correctPin) {
+                    sessionStorage.setItem('authenticated', 'true');
+                    loginError.classList.remove('show');
+                    showDashboard();
+                } else {
+                    loginError.classList.add('show');
+                    pinInput.value = '';
+                    pinInput.focus();
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                loginError.textContent = 'Erreur de connexion';
+                loginError.classList.add('show');
+            }
+        }
+
+        // Logout
+        logoutBtn.addEventListener('click', () => {
+            sessionStorage.removeItem('authenticated');
+            isAuthenticated = false;
+            loginScreen.style.display = 'block';
+            dashboard.classList.remove('visible');
+            pinInput.value = '';
+        });
+
+        function showDashboard() {
+            isAuthenticated = true;
+            loginScreen.style.display = 'none';
+            dashboard.classList.add('visible');
+            initDashboard();
+        }
+
+        // ==================== DASHBOARD ====================
+
+        function initDashboard() {
+            // Ecouter le statut du PC
+            onValue(statusRef, (snapshot) => {
+                const status = snapshot.val();
+                if (status && status.online) {
+                    lastStatusTimestamp = status.timestamp;
+                    checkPCOnline();
+                } else {
+                    pcOnline = false;
+                    updatePCStatus();
+                }
+            });
+
+            // Ecouter les logs en temps reel
+            onValue(logsRef, (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    const logs = Object.values(data).sort((a, b) => a.order - b.order);
+                    renderLogs(logs);
+                } else {
+                    renderLogs([]);
+                }
+            });
+
+            // Ecouter l'etat de la commande
+            onValue(commandRef, (snapshot) => {
+                const command = snapshot.val();
+                if (command && command.status === 'running') {
+                    isRunning = true;
+                    runBtn.disabled = true;
+                    runBtn.innerHTML = '<span class="spinner"></span>En cours...';
+                } else {
+                    isRunning = false;
+                    runBtn.disabled = !pcOnline;
+                    runBtn.innerHTML = 'Lancer Automatisation';
+                }
+            });
+
+            // Verifier regulierement si le PC est toujours en ligne (toutes les 2 sec)
+            setInterval(() => {
+                checkPCOnline();
+            }, 2000);
+
+            // Verifier immediatement au chargement
+            checkPCOnline();
+        }
 
         // Verifier si le PC est en ligne (heartbeat < 15 sec)
         function checkPCOnline() {
@@ -315,14 +516,6 @@
             }
         }
 
-        // Verifier regulierement si le PC est toujours en ligne (toutes les 2 sec)
-        setInterval(() => {
-            checkPCOnline();
-        }, 2000);
-
-        // Verifier immediatement au chargement
-        checkPCOnline();
-
         function updatePCStatus() {
             if (pcOnline) {
                 pcStatus.className = 'status-banner status-online';
@@ -338,31 +531,6 @@
                 runBtn.disabled = true;
             }
         }
-
-        // Ecouter les logs en temps reel
-        onValue(logsRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data) {
-                const logs = Object.values(data).sort((a, b) => a.order - b.order);
-                renderLogs(logs);
-            } else {
-                renderLogs([]);
-            }
-        });
-
-        // Ecouter l'etat de la commande
-        onValue(commandRef, (snapshot) => {
-            const command = snapshot.val();
-            if (command && command.status === 'running') {
-                isRunning = true;
-                runBtn.disabled = true;
-                runBtn.innerHTML = '<span class="spinner"></span>En cours...';
-            } else {
-                isRunning = false;
-                runBtn.disabled = !pcOnline;
-                runBtn.innerHTML = 'Lancer Automatisation';
-            }
-        });
 
         function renderLogs(logs) {
             if (logs.length === 0) {
