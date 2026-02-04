@@ -93,13 +93,17 @@ def run_automation():
     send_log("info", "Demarrage de l'automatisation...")
 
     try:
-        # Lancer le processus
+        # Lancer le processus avec -u pour desactiver le buffering
+        env = os.environ.copy()
+        env['PYTHONUNBUFFERED'] = '1'
+
         process = subprocess.Popen(
-            ['python', SCRIPT_PATH],
+            ['python', '-u', SCRIPT_PATH],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1
+            bufsize=1,
+            env=env
         )
 
         # Lire les logs en temps reel
