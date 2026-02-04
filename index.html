@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Logs Dashboard</title>
+    <title>Automation Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -31,6 +31,26 @@
             color: #00d4ff;
         }
 
+        .status-banner {
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .status-online {
+            background: rgba(63, 185, 80, 0.2);
+            border: 1px solid #3fb950;
+            color: #3fb950;
+        }
+
+        .status-offline {
+            background: rgba(248, 81, 73, 0.2);
+            border: 1px solid #f85149;
+            color: #f85149;
+        }
+
         .controls {
             display: flex;
             gap: 10px;
@@ -48,14 +68,30 @@
             font-weight: 600;
         }
 
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
         .btn-primary {
             background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
             color: #1a1a2e;
         }
 
-        .btn-primary:hover {
+        .btn-primary:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #3fb950 0%, #2ea043 100%);
+            color: #fff;
+        }
+
+        .btn-success:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(63, 185, 80, 0.4);
         }
 
         .btn-danger {
@@ -63,7 +99,7 @@
             color: #fff;
         }
 
-        .btn-danger:hover {
+        .btn-danger:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 5px 20px rgba(255, 71, 87, 0.4);
         }
@@ -98,9 +134,16 @@
         .status-dot {
             width: 8px;
             height: 8px;
-            background: #3fb950;
             border-radius: 50%;
+        }
+
+        .status-dot.online {
+            background: #3fb950;
             animation: pulse 2s infinite;
+        }
+
+        .status-dot.offline {
+            background: #f85149;
         }
 
         @keyframes pulse {
@@ -152,83 +195,147 @@
             border-radius: 12px;
             font-size: 0.8rem;
         }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #1a1a2e;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Logs Dashboard</h1>
+        <h1>Automation Dashboard</h1>
+
+        <div class="status-banner status-offline" id="pcStatus">
+            PC: Hors ligne
+        </div>
 
         <div class="controls">
-            <button class="btn btn-primary" id="addLogBtn">Ajouter un Log</button>
+            <button class="btn btn-success" id="runBtn">Lancer Automatisation</button>
             <button class="btn btn-danger" id="clearLogsBtn">Effacer les Logs</button>
         </div>
 
         <div class="logs-container">
             <div class="logs-header">
                 <div class="status-indicator">
-                    <div class="status-dot"></div>
-                    <span>Console Active</span>
+                    <div class="status-dot offline" id="statusDot"></div>
+                    <span id="statusText">En attente de connexion...</span>
                 </div>
                 <span class="log-count" id="logCount">0 logs</span>
             </div>
             <div class="logs-content" id="logsContent">
                 <div class="empty-state">
-                    Aucun log pour le moment. Cliquez sur "Ajouter un Log" pour commencer.
+                    En attente de connexion au PC...
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, onValue, set, push, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // Configuration Firebase
+        const firebaseConfig = {
+            databaseURL: "https://webpage-659e4-default-rtdb.firebaseio.com"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // References
+        const logsRef = ref(db, 'logs');
+        const commandRef = ref(db, 'command');
+        const statusRef = ref(db, 'pc_status');
+
+        // DOM Elements
         const logsContent = document.getElementById('logsContent');
         const logCount = document.getElementById('logCount');
-        const addLogBtn = document.getElementById('addLogBtn');
+        const runBtn = document.getElementById('runBtn');
         const clearLogsBtn = document.getElementById('clearLogsBtn');
+        const pcStatus = document.getElementById('pcStatus');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
 
-        let logs = [];
-        let logId = 0;
+        let isRunning = false;
+        let pcOnline = false;
 
-        const logTypes = ['info', 'success', 'warning', 'error'];
-        const sampleMessages = [
-            { type: 'info', message: 'Application demarree' },
-            { type: 'success', message: 'Connexion etablie avec succes' },
-            { type: 'warning', message: 'Memoire utilisee a 75%' },
-            { type: 'error', message: 'Erreur de connexion au serveur' },
-            { type: 'info', message: 'Nouvelle requete recue' },
-            { type: 'success', message: 'Donnees sauvegardees' },
-            { type: 'warning', message: 'Temps de reponse eleve detecte' },
-            { type: 'info', message: 'Mise a jour disponible' },
-            { type: 'success', message: 'Authentification reussie' },
-            { type: 'error', message: 'Timeout de la requete' }
-        ];
+        // Ecouter le statut du PC
+        onValue(statusRef, (snapshot) => {
+            const status = snapshot.val();
+            if (status && status.online) {
+                const lastSeen = status.timestamp;
+                const now = Date.now();
+                // PC considere en ligne si heartbeat < 30 secondes
+                pcOnline = (now - lastSeen) < 30000;
+            } else {
+                pcOnline = false;
+            }
+            updatePCStatus();
+        });
 
-        function getTimestamp() {
-            const now = new Date();
-            return now.toLocaleTimeString('fr-FR', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
+        // Verifier regulierement si le PC est toujours en ligne
+        setInterval(() => {
+            updatePCStatus();
+        }, 5000);
+
+        function updatePCStatus() {
+            if (pcOnline) {
+                pcStatus.className = 'status-banner status-online';
+                pcStatus.textContent = 'PC: En ligne';
+                statusDot.className = 'status-dot online';
+                statusText.textContent = 'Console Active';
+                runBtn.disabled = false;
+            } else {
+                pcStatus.className = 'status-banner status-offline';
+                pcStatus.textContent = 'PC: Hors ligne';
+                statusDot.className = 'status-dot offline';
+                statusText.textContent = 'En attente du PC...';
+                runBtn.disabled = true;
+            }
         }
 
-        function addLog(type, message) {
-            logId++;
-            const log = {
-                id: logId,
-                type: type,
-                message: message,
-                timestamp: getTimestamp()
-            };
-            logs.push(log);
-            renderLogs();
-            scrollToBottom();
-        }
+        // Ecouter les logs en temps reel
+        onValue(logsRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                const logs = Object.values(data).sort((a, b) => a.order - b.order);
+                renderLogs(logs);
+            } else {
+                renderLogs([]);
+            }
+        });
 
-        function renderLogs() {
+        // Ecouter l'etat de la commande
+        onValue(commandRef, (snapshot) => {
+            const command = snapshot.val();
+            if (command && command.status === 'running') {
+                isRunning = true;
+                runBtn.disabled = true;
+                runBtn.innerHTML = '<span class="spinner"></span>En cours...';
+            } else {
+                isRunning = false;
+                runBtn.disabled = !pcOnline;
+                runBtn.innerHTML = 'Lancer Automatisation';
+            }
+        });
+
+        function renderLogs(logs) {
             if (logs.length === 0) {
                 logsContent.innerHTML = `
                     <div class="empty-state">
-                        Aucun log pour le moment. Cliquez sur "Ajouter un Log" pour commencer.
+                        Aucun log. Cliquez sur "Lancer Automatisation" pour commencer.
                     </div>
                 `;
             } else {
@@ -238,6 +345,7 @@
                         <span class="log-message log-${log.type}">${log.message}</span>
                     </div>
                 `).join('');
+                scrollToBottom();
             }
             logCount.textContent = `${logs.length} log${logs.length > 1 ? 's' : ''}`;
         }
@@ -246,25 +354,21 @@
             logsContent.scrollTop = logsContent.scrollHeight;
         }
 
-        function clearLogs() {
-            logs = [];
-            logId = 0;
-            renderLogs();
-        }
+        // Lancer l'automatisation
+        runBtn.addEventListener('click', async () => {
+            if (isRunning || !pcOnline) return;
 
-        function getRandomLog() {
-            return sampleMessages[Math.floor(Math.random() * sampleMessages.length)];
-        }
-
-        addLogBtn.addEventListener('click', () => {
-            const randomLog = getRandomLog();
-            addLog(randomLog.type, randomLog.message);
+            await set(commandRef, {
+                action: 'run',
+                timestamp: Date.now(),
+                status: 'pending'
+            });
         });
 
-        clearLogsBtn.addEventListener('click', clearLogs);
-
-        // Log initial
-        addLog('info', 'Dashboard initialise');
+        // Effacer les logs
+        clearLogsBtn.addEventListener('click', async () => {
+            await remove(logsRef);
+        });
     </script>
 </body>
 </html>
