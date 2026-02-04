@@ -285,10 +285,10 @@
             }
         });
 
-        // Verifier si le PC est en ligne (heartbeat < 30 sec)
+        // Verifier si le PC est en ligne (heartbeat < 15 sec)
         function checkPCOnline() {
             const now = Date.now();
-            const newOnlineStatus = lastStatusTimestamp > 0 && (now - lastStatusTimestamp) < 30000;
+            const newOnlineStatus = lastStatusTimestamp > 0 && (now - lastStatusTimestamp) < 15000;
 
             // Si le statut change, reset la commande bloquee
             if (newOnlineStatus !== wasOnline) {
