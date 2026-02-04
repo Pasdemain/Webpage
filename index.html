@@ -270,24 +270,54 @@
 
         let isRunning = false;
         let pcOnline = false;
+        let wasOnline = false;
+        let lastStatusTimestamp = 0;
 
         // Ecouter le statut du PC
         onValue(statusRef, (snapshot) => {
             const status = snapshot.val();
             if (status && status.online) {
-                const lastSeen = status.timestamp;
-                const now = Date.now();
-                // PC considere en ligne si heartbeat < 30 secondes
-                pcOnline = (now - lastSeen) < 30000;
+                lastStatusTimestamp = status.timestamp;
+                checkPCOnline();
             } else {
                 pcOnline = false;
+                updatePCStatus();
             }
-            updatePCStatus();
         });
+
+        // Verifier si le PC est en ligne (heartbeat < 30 sec)
+        function checkPCOnline() {
+            const now = Date.now();
+            const newOnlineStatus = (now - lastStatusTimestamp) < 30000;
+
+            // Si le PC vient de revenir en ligne, reset la commande bloquee
+            if (newOnlineStatus && !wasOnline) {
+                resetStuckCommand();
+            }
+
+            wasOnline = pcOnline;
+            pcOnline = newOnlineStatus;
+            updatePCStatus();
+        }
+
+        // Reset une commande bloquee (running/pending alors que PC etait offline)
+        async function resetStuckCommand() {
+            const snapshot = await new Promise(resolve => {
+                onValue(commandRef, resolve, { onlyOnce: true });
+            });
+            const command = snapshot.val();
+            if (command && (command.status === 'running' || command.status === 'pending')) {
+                await set(commandRef, {
+                    action: 'none',
+                    status: 'reset',
+                    timestamp: Date.now()
+                });
+            }
+        }
 
         // Verifier regulierement si le PC est toujours en ligne
         setInterval(() => {
-            updatePCStatus();
+            checkPCOnline();
         }, 5000);
 
         function updatePCStatus() {
