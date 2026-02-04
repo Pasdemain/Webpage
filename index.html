@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logs Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2rem;
+            color: #00d4ff;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            color: #1a1a2e;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff4757 0%, #cc3344 100%);
+            color: #fff;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(255, 71, 87, 0.4);
+        }
+
+        .logs-container {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .logs-header {
+            background: #161b22;
+            padding: 15px 20px;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logs-header span {
+            color: #8b949e;
+            font-size: 0.9rem;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #3fb950;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .logs-content {
+            padding: 20px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-timestamp {
+            color: #8b949e;
+            margin-right: 10px;
+        }
+
+        .log-message {
+            color: #c9d1d9;
+        }
+
+        .log-info { color: #58a6ff; }
+        .log-success { color: #3fb950; }
+        .log-warning { color: #d29922; }
+        .log-error { color: #f85149; }
+
+        .empty-state {
+            text-align: center;
+            color: #8b949e;
+            padding: 60px 20px;
+        }
+
+        .log-count {
+            background: #30363d;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Logs Dashboard</h1>
+
+        <div class="controls">
+            <button class="btn btn-primary" id="addLogBtn">Ajouter un Log</button>
+            <button class="btn btn-danger" id="clearLogsBtn">Effacer les Logs</button>
+        </div>
+
+        <div class="logs-container">
+            <div class="logs-header">
+                <div class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span>Console Active</span>
+                </div>
+                <span class="log-count" id="logCount">0 logs</span>
+            </div>
+            <div class="logs-content" id="logsContent">
+                <div class="empty-state">
+                    Aucun log pour le moment. Cliquez sur "Ajouter un Log" pour commencer.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const logsContent = document.getElementById('logsContent');
+        const logCount = document.getElementById('logCount');
+        const addLogBtn = document.getElementById('addLogBtn');
+        const clearLogsBtn = document.getElementById('clearLogsBtn');
+
+        let logs = [];
+        let logId = 0;
+
+        const logTypes = ['info', 'success', 'warning', 'error'];
+        const sampleMessages = [
+            { type: 'info', message: 'Application demarree' },
+            { type: 'success', message: 'Connexion etablie avec succes' },
+            { type: 'warning', message: 'Memoire utilisee a 75%' },
+            { type: 'error', message: 'Erreur de connexion au serveur' },
+            { type: 'info', message: 'Nouvelle requete recue' },
+            { type: 'success', message: 'Donnees sauvegardees' },
+            { type: 'warning', message: 'Temps de reponse eleve detecte' },
+            { type: 'info', message: 'Mise a jour disponible' },
+            { type: 'success', message: 'Authentification reussie' },
+            { type: 'error', message: 'Timeout de la requete' }
+        ];
+
+        function getTimestamp() {
+            const now = new Date();
+            return now.toLocaleTimeString('fr-FR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function addLog(type, message) {
+            logId++;
+            const log = {
+                id: logId,
+                type: type,
+                message: message,
+                timestamp: getTimestamp()
+            };
+            logs.push(log);
+            renderLogs();
+            scrollToBottom();
+        }
+
+        function renderLogs() {
+            if (logs.length === 0) {
+                logsContent.innerHTML = `
+                    <div class="empty-state">
+                        Aucun log pour le moment. Cliquez sur "Ajouter un Log" pour commencer.
+                    </div>
+                `;
+            } else {
+                logsContent.innerHTML = logs.map(log => `
+                    <div class="log-entry">
+                        <span class="log-timestamp">[${log.timestamp}]</span>
+                        <span class="log-message log-${log.type}">${log.message}</span>
+                    </div>
+                `).join('');
+            }
+            logCount.textContent = `${logs.length} log${logs.length > 1 ? 's' : ''}`;
+        }
+
+        function scrollToBottom() {
+            logsContent.scrollTop = logsContent.scrollHeight;
+        }
+
+        function clearLogs() {
+            logs = [];
+            logId = 0;
+            renderLogs();
+        }
+
+        function getRandomLog() {
+            return sampleMessages[Math.floor(Math.random() * sampleMessages.length)];
+        }
+
+        addLogBtn.addEventListener('click', () => {
+            const randomLog = getRandomLog();
+            addLog(randomLog.type, randomLog.message);
+        });
+
+        clearLogsBtn.addEventListener('click', clearLogs);
+
+        // Log initial
+        addLog('info', 'Dashboard initialise');
+    </script>
+</body>
+</html>
